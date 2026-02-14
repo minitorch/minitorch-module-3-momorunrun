@@ -4,7 +4,6 @@ import random
 from typing import Iterable, Optional, Sequence, Tuple, Union
 
 import numba
-import numba.cuda
 import numpy as np
 import numpy.typing as npt
 from numpy import array, float64
@@ -16,8 +15,7 @@ MAX_DIMS = 32
 
 
 class IndexingError(RuntimeError):
-    """Exception raised for indexing errors."""
-
+    "Exception raised for indexing errors."
     pass
 
 
@@ -33,7 +31,8 @@ UserStrides: TypeAlias = Sequence[int]
 
 
 def index_to_position(index: Index, strides: Strides) -> int:
-    """Converts a multidimensional tensor `index` into a single-dimensional position in
+    """
+    Converts a multidimensional tensor `index` into a single-dimensional position in
     storage based on strides.
 
     Args:
@@ -42,13 +41,36 @@ def index_to_position(index: Index, strides: Strides) -> int:
 
     Returns:
         Position in storage
-
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+
+    # TODO: Implement for Task 2.1.
+    # return int(np.dot(index, strides)) 
+
+    # Optimizations:
+    # - Main loop in parallel
+    # - All indices use numpy buffers
+    # - When out and in are stride-aligned, avoid indexing
+
+    # Check if strides are aligned (stride-aligned optimization)
+    if np.all(strides == 1):
+        # If strides are all 1, the position is simply the sum of the index
+        return sum(index) # numba does not support np.sum()
+
+    position = 0
+    for i in numba.prange(len(index)):  # Parallel loop
+        position += index[i] * strides[i]
+    return position
+
+    # position = 0
+    # for i, stride in zip(index, strides):
+    #     position += i * stride
+    # return position
+    # raise NotImplementedError("Need to implement for Task 2.1")
 
 
 def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
-    """Convert an `ordinal` to an index in the `shape`.
+    """
+    Convert an `ordinal` to an index in the `shape`.
     Should ensure that enumerating position 0 ... size of a
     tensor produces every index exactly once. It
     may not be the inverse of `index_to_position`.
@@ -59,13 +81,19 @@ def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
         out_index : return index corresponding to position.
 
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    # TODO: Implement for Task 2.1.
+    cur = ordinal + 0
+    for i in range(len(shape) - 1, -1, -1):
+        out_index[i] = cur % shape[i]
+        cur = cur // shape[i]
+    # raise NotImplementedError("Need to implement for Task 2.1")
 
 
 def broadcast_index(
     big_index: Index, big_shape: Shape, shape: Shape, out_index: OutIndex
 ) -> None:
-    """Convert a `big_index` into `big_shape` to a smaller `out_index`
+    """
+    Convert a `big_index` into `big_shape` to a smaller `out_index`
     into `shape` following broadcasting rules. In this case
     it may be larger or with more dimensions than the `shape`
     given. Additional dimensions may need to be mapped to 0 or
@@ -79,13 +107,20 @@ def broadcast_index(
 
     Returns:
         None
-
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    # TODO: Implement for Task 2.2.
+    offset = len(big_shape) - len(shape)
+    for i in range(len(shape)):
+        if shape[i] == 1:
+            out_index[i] = 0
+        else:
+            out_index[i] = big_index[i + offset]
+    # raise NotImplementedError("Need to implement for Task 2.2")
 
 
 def shape_broadcast(shape1: UserShape, shape2: UserShape) -> UserShape:
-    """Broadcast two shapes to create a new union shape.
+    """
+    Broadcast two shapes to create a new union shape.
 
     Args:
         shape1 : first shape
@@ -96,9 +131,36 @@ def shape_broadcast(shape1: UserShape, shape2: UserShape) -> UserShape:
 
     Raises:
         IndexingError : if cannot broadcast
-
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    # TODO: Implement for Task 2.2.
+    max_len = max(len(shape1), len(shape2))
+    s1 = [1] * (max_len - len(shape1)) + list(shape1)
+    s2 = [1] * (max_len - len(shape2)) + list(shape2)
+    s = [0] * max_len
+
+    for i in range(max_len):
+        if s1[i] == s2[i] or s1[i] == 1 or s2[i] == 1:
+            s[i] = max(s1[i], s2[i])
+        else:
+            raise IndexingError(f"Shapes {shape1} and {shape2} cannot be broadcast")
+        
+    return tuple(s)
+
+    # reversed_shape1 = list(reversed(shape1))
+    # reversed_shape2 = list(reversed(shape2))
+    # broadcasted_shape = []
+
+    # for i in range(max(len(shape1), len(shape2))):
+    #     dim1 = reversed_shape1[i] if i < len(shape1) else 1
+    #     dim2 = reversed_shape2[i] if i < len(shape2) else 1
+
+    #     if dim1 == dim2 or dim1 == 1 or dim2 == 1:
+    #         broadcasted_shape.insert(0, max(dim1, dim2))
+    #     else:
+    #         raise IndexingError(f"Shapes {shape1} and {shape2} cannot be broadcast")
+        
+    # return tuple(broadcasted_shape)
+    # raise NotImplementedError("Need to implement for Task 2.2")
 
 
 def strides_from_shape(shape: UserShape) -> UserStrides:
@@ -146,16 +208,15 @@ class TensorData:
         assert len(self._storage) == self.size
 
     def to_cuda_(self) -> None:  # pragma: no cover
-        """Convert to cuda"""
         if not numba.cuda.is_cuda_array(self._storage):
             self._storage = numba.cuda.to_device(self._storage)
 
     def is_contiguous(self) -> bool:
-        """Check that the layout is contiguous, i.e. outer dimensions have bigger strides than inner dimensions.
+        """
+        Check that the layout is contiguous, i.e. outer dimensions have bigger strides than inner dimensions.
 
         Returns:
             bool : True if contiguous
-
         """
         last = 1e9
         for stride in self._strides:
@@ -171,13 +232,8 @@ class TensorData:
     def index(self, index: Union[int, UserIndex]) -> int:
         if isinstance(index, int):
             aindex: Index = array([index])
-        else:  # if isinstance(index, tuple):
+        if isinstance(index, tuple):
             aindex = array(index)
-
-        # Pretend 0-dim shape is 1-dim shape of singleton
-        shape = self.shape
-        if len(shape) == 0 and len(aindex) != 0:
-            shape = (1,)
 
         # Check for errors
         if aindex.shape[0] != len(self.shape):
@@ -199,7 +255,6 @@ class TensorData:
             yield tuple(out_index)
 
     def sample(self) -> UserIndex:
-        """Get a random valid index"""
         return tuple((random.randint(0, s - 1) for s in self.shape))
 
     def get(self, key: UserIndex) -> float:
@@ -210,27 +265,29 @@ class TensorData:
         self._storage[self.index(key)] = val
 
     def tuple(self) -> Tuple[Storage, Shape, Strides]:
-        """Return core tensor data as a tuple."""
         return (self._storage, self._shape, self._strides)
 
     def permute(self, *order: int) -> TensorData:
-        """Permute the dimensions of the tensor.
+        """
+        Permute the dimensions of the tensor.
 
         Args:
-            *order: a permutation of the dimensions
+            order (list): a permutation of the dimensions
 
         Returns:
             New `TensorData` with the same storage and a new dimension order.
-
         """
         assert list(sorted(order)) == list(
             range(len(self.shape))
         ), f"Must give a position to each dimension. Shape: {self.shape} Order: {order}"
 
-        raise NotImplementedError("Need to include this file from past assignment.")
+        # TODO: Implement for Task 2.1.
+        new_shape = tuple(self.shape[i] for i in order)
+        new_strides = tuple(self.strides[i] for i in order)
+        return TensorData(self._storage, new_shape, new_strides)
+        # raise NotImplementedError("Need to implement for Task 2.1")
 
     def to_string(self) -> str:
-        """Convert to string"""
         s = ""
         for index in self.indices():
             l = ""
