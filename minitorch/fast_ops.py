@@ -179,7 +179,6 @@ def tensor_map(
                     stride_aligned = False
                     break
 
-
         for i in prange(len(out)):
             if stride_aligned:
                 out[i] = fn(in_storage[i])
@@ -318,7 +317,6 @@ def tensor_reduce(
                 cur = fn(cur, a_storage[a_pos])
 
             out[out_pos] = cur
-
         # raise NotImplementedError("Need to implement for Task 3.1")
 
     return njit(_reduce, parallel=True)  # type: ignore
