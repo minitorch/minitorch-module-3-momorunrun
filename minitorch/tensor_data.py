@@ -52,9 +52,10 @@ def index_to_position(index: Index, strides: Strides) -> int:
     # - When out and in are stride-aligned, avoid indexing
 
     # Check if strides are aligned (stride-aligned optimization)
-    if np.all(strides == 1):
-        # If strides are all 1, the position is simply the sum of the index
-        return sum(index) # numba does not support np.sum()
+    ## np.all() 在 CUDA device 函数里不稳定
+    # if np.all(strides == 1):
+    #     # If strides are all 1, the position is simply the sum of the index
+    #     return sum(index) # numba does not support np.sum()
 
     position = 0
     for i in numba.prange(len(index)):  # Parallel loop
